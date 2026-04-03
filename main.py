@@ -21,7 +21,6 @@ else:
     # ... 기존 코드 ...
 
 import pandas as pd
-import customtkinter as ctk
 from tkinter import filedialog, messagebox, Toplevel
 from tkcalendar import Calendar
 import os
