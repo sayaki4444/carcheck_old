@@ -41,25 +41,46 @@ else:
         mode = st.radio("운영 모드 선택", ["5부제", "2부제"])
         st.info(f"현재 {mode} 모드로 작동 중입니다.")
         
-        st.divider()
+      st.divider()
         st.header("🔍 차량 및 제외여부 조회")
         search_car = st.text_input("차량번호 뒷자리 검색")
         
         if search_car:
             is_excluded = False
-            # 1. 제외 리스트 및 사유 확인
+            # 1. 제외 리스트 및 상세 사유 확인
             if os.path.exists("제외리스트.xlsx"):
-                # 엑셀 파일 로드 (사유 컬럼이 있다고 가정)
                 ex_df = pd.read_excel("제외리스트.xlsx")
-                # 검색어가 포함된 행 찾기
+                # 검색어가 포함된 행 찾기 (차량번호 컬럼 기준)
                 ex_res = ex_df[ex_df['차량번호'].astype(str).str.contains(search_car)]
                 
                 if not ex_res.empty:
                     is_excluded = True
                     info_ex = ex_res.iloc[0]
-                    # '사유' 컬럼이 있으면 가져오고, 없으면 '미기재'로 표시
-                    reason = info_ex.get('사유', '사유 미기재')
-                    st.info(f"💡 **[제외 대상 차량]**\n\n**번호:** {info_ex['차량번호']}\n\n**사유:** {reason}")
+                    
+                    # 칼럼명에 맞춰 데이터 가져오기
+                    main_reason = info_ex.get('제외사유', '사유 미기재')
+                    sub_reason = info_ex.get('상세사유', '-')
+                    
+                    st.info(f"💡 **[제외 대상 차량]**\n\n"
+                            f"**번호:** {info_ex['차량번호']}\n\n"
+                            f"**구분:** {main_reason}\n\n"
+                            f"**상세:** {sub_reason}")
+
+            # 2. 누적 위반 기록 확인 (동시에 표시)
+            if os.path.exists(history_file):
+                df_h = pd.read_csv(history_file)
+                res = df_h[df_h['차량번호'].astype(str).str.contains(search_car)]
+                
+                if not res.empty:
+                    info_h = res.iloc[0]
+                    st.success(f"📌 **위반 기록 검색 결과**\n\n"
+                               f"**{info_h['이름']} ({info_h['부서']})**\n\n"
+                               f"누적: {info_h['누적횟수']}회 / 최근: {info_h['최근위반일']}")
+                elif not is_excluded:
+                    st.warning("위반 기록이 없는 정상 차량입니다.")
+            else:
+                if not is_excluded:
+                    st.error("데이터 파일(누적위반기록.csv)이 없습니다.")
 
             # 2. 누적 위반 기록 확인 (동시에 표시)
             if os.path.exists(history_file):
