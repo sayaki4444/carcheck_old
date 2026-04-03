@@ -42,42 +42,57 @@ else:
         st.info(f"현재 {mode} 모드로 작동 중입니다.")
         
         st.divider()
-        st.header("🔍 차량 및 제외여부 조회")
+        st.header("🔍 차량 통합 조회")
         search_car = st.text_input("차량번호 뒷자리 검색")
         
         if search_car:
+            is_registered = False
             is_excluded = False
-            # 1. 제외 리스트 및 상세 사유 확인
+            reg_info = None
+            ex_info = None
+
+            # 1. 등록 여부 확인 (전체차량리스트.xlsx)
+            if os.path.exists("전체차량리스트.xlsx"):
+                reg_df = pd.read_excel("전체차량리스트.xlsx")
+                reg_res = reg_df[reg_df['차량번호'].astype(str).str.contains(search_car)]
+                if not reg_res.empty:
+                    is_registered = True
+                    reg_info = reg_res.iloc[0]
+
+            # 2. 제외 여부 확인 (제외리스트.xlsx)
             if os.path.exists("제외리스트.xlsx"):
                 ex_df = pd.read_excel("제외리스트.xlsx")
                 ex_res = ex_df[ex_df['차량번호'].astype(str).str.contains(search_car)]
-                
                 if not ex_res.empty:
                     is_excluded = True
-                    info_ex = ex_res.iloc[0]
-                    main_reason = info_ex.get('제외사유', '사유 미기재')
-                    sub_reason = info_ex.get('상세사유', '-')
-                    
-                    st.info(f"💡 **[제외 대상 차량]**\n\n"
-                            f"**번호:** {info_ex['차량번호']}\n\n"
-                            f"**구분:** {main_reason}\n\n"
-                            f"**상세:** {sub_reason}")
+                    ex_info = ex_res.iloc[0]
 
-            # 2. 누적 위반 기록 확인
+            # 3. 결과 출력 (요청하신 3가지 형식)
+            st.markdown("---")
+            if is_registered:
+                if is_excluded:
+                    # [결과 2] 등록된 차량(제외대상)
+                    main_reason = ex_info.get('제외사유', '사유 미기재')
+                    sub_reason = ex_info.get('상세사유', '-')
+                    st.info(f"✅ **등록된 차량입니다.**\n\n"
+                            f"💡 **제외차량 안내**\n"
+                            f"- 사유: {main_reason}\n"
+                            f"- 상세: {sub_reason}")
+                else:
+                    # [결과 1] 등록된 차량(일반)
+                    st.success(f"✅ **등록된 차량입니다.**\n\n(제외차량 아님)")
+            else:
+                # [결과 3] 미등록 차량
+                st.error("❌ **미등록 차량**")
+                st.warning("등록 리스트에 존재하지 않는 차량입니다.")
+
+            # 4. 누적 위반 기록 추가 표시
             if os.path.exists(history_file):
                 df_h = pd.read_csv(history_file)
-                res = df_h[df_h['차량번호'].astype(str).str.contains(search_car)]
-                
-                if not res.empty:
-                    info_h = res.iloc[0]
-                    st.success(f"📌 **위반 기록 검색 결과**\n\n"
-                               f"**{info_h['이름']} ({info_h['부서']})**\n\n"
-                               f"누적: {info_h['누적횟수']}회 / 최근: {info_h['최근위반일']}")
-                elif not is_excluded:
-                    st.warning("위반 기록이 없는 정상 차량입니다.")
-            else:
-                if not is_excluded:
-                    st.error("데이터 파일이 없어 조회가 불가능합니다.")
+                h_res = df_h[df_h['차량번호'].astype(str).str.contains(search_car)]
+                if not h_res.empty:
+                    h_info = h_res.iloc[0]
+                    st.write(f"🚩 **위반 이력:** {h_info['누적횟수']}회 (최근: {h_info['최근위반일']})")
 
     # --- 메인 영역 ---
     st.subheader("1. 분석용 파일 업로드")
@@ -159,7 +174,6 @@ else:
                                             })
                                             df_h = pd.concat([df_h, nr], ignore_index=True)
                                     
-                                    # 해당 차량의 현재 누적 횟수 가져오기
                                     current_cnt = df_h[df_h['차량번호'].astype(str) == c_no]['누적횟수'].values[0]
                                     actions.append(f"{current_cnt}회 위반")
                                 
@@ -168,7 +182,6 @@ else:
 
                         df_h.to_excel(writer, sheet_name='전체누적현황', index=False)
 
-                # 파일 업데이트 저장
                 df_h.to_csv(history_file, index=False, encoding='utf-8-sig')
                 df_log.to_csv(detail_log_file, index=False, encoding='utf-8-sig')
                 
