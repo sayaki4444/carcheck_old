@@ -35,13 +35,13 @@ else:
     history_file = os.path.join(DATA_DIR, '누적위반기록.csv')
     detail_log_file = os.path.join(DATA_DIR, '위반상세이력_로그.csv')
 
-    # 사이드바 설정
+    # --- 사이드바 설정 ---
     with st.sidebar:
         st.header("⚙️ 시스템 설정")
         mode = st.radio("운영 모드 선택", ["5부제", "2부제"])
         st.info(f"현재 {mode} 모드로 작동 중입니다.")
         
-      st.divider()
+        st.divider()
         st.header("🔍 차량 및 제외여부 조회")
         search_car = st.text_input("차량번호 뒷자리 검색")
         
@@ -50,14 +50,11 @@ else:
             # 1. 제외 리스트 및 상세 사유 확인
             if os.path.exists("제외리스트.xlsx"):
                 ex_df = pd.read_excel("제외리스트.xlsx")
-                # 검색어가 포함된 행 찾기 (차량번호 컬럼 기준)
                 ex_res = ex_df[ex_df['차량번호'].astype(str).str.contains(search_car)]
                 
                 if not ex_res.empty:
                     is_excluded = True
                     info_ex = ex_res.iloc[0]
-                    
-                    # 칼럼명에 맞춰 데이터 가져오기
                     main_reason = info_ex.get('제외사유', '사유 미기재')
                     sub_reason = info_ex.get('상세사유', '-')
                     
@@ -66,7 +63,7 @@ else:
                             f"**구분:** {main_reason}\n\n"
                             f"**상세:** {sub_reason}")
 
-            # 2. 누적 위반 기록 확인 (동시에 표시)
+            # 2. 누적 위반 기록 확인
             if os.path.exists(history_file):
                 df_h = pd.read_csv(history_file)
                 res = df_h[df_h['차량번호'].astype(str).str.contains(search_car)]
@@ -80,23 +77,9 @@ else:
                     st.warning("위반 기록이 없는 정상 차량입니다.")
             else:
                 if not is_excluded:
-                    st.error("데이터 파일(누적위반기록.csv)이 없습니다.")
-
-            # 2. 누적 위반 기록 확인 (동시에 표시)
-            if os.path.exists(history_file):
-                df_h = pd.read_csv(history_file)
-                res = df_h[df_h['차량번호'].astype(str).str.contains(search_car)]
-                
-                if not res.empty:
-                    info_h = res.iloc[0]
-                    st.success(f"📌 **위반 기록 검색 결과**\n\n**{info_h['이름']} ({info_h['부서']})**\n\n누적: {info_h['누적횟수']}회 / 최근: {info_h['최근위반일']}")
-                elif not is_excluded:
-                    st.warning("기록이 없습니다. (정상 차량)")
-            else:
-                if not is_excluded:
                     st.error("데이터 파일이 없어 조회가 불가능합니다.")
 
-    # 메인 영역 - 파일 업로드
+    # --- 메인 영역 ---
     st.subheader("1. 분석용 파일 업로드")
     uploaded_file = st.file_uploader("출입기록 엑셀 파일(.xlsx, .ods)을 선택하세요", type=['xlsx', 'ods'])
     
@@ -110,14 +93,14 @@ else:
     if st.button("🚀 통합 분석 및 보고서 생성", use_container_width=True):
         if uploaded_file is not None:
             try:
-                # 데이터 로드
                 with st.spinner('분석 중...'):
+                    # 데이터 로드
                     if uploaded_file.name.endswith('.ods'):
                         df_all = pd.read_excel(uploaded_file, engine='odf')
                     else:
                         df_all = pd.read_excel(uploaded_file)
 
-                    # 제외 리스트 로드 (없으면 빈 셋)
+                    # 제외 리스트 로드
                     ex_set = set()
                     if os.path.exists("제외리스트.xlsx"):
                         ex_set = set(pd.read_excel("제외리스트.xlsx")['차량번호'].astype(str).str.strip().tolist())
@@ -131,11 +114,10 @@ else:
                     df_h = pd.read_csv(history_file) if os.path.exists(history_file) else pd.DataFrame(columns=['이름', '부서', '차량번호', '누적횟수', '최근위반일'])
                     df_log = pd.read_csv(detail_log_file) if os.path.exists(detail_log_file) else pd.DataFrame(columns=['날짜', '차량번호'])
 
-                    # 분석 로직 (5부제/2부제)
+                    # 분석 로직
                     rules_5 = {0: [1, 6], 1: [2, 7], 2: [3, 8], 3: [4, 9], 4: [5, 0]}
                     dates = sorted(df_filtered['입차일시'].dt.date.unique())
                     
-                    # 엑셀 생성을 위한 메모리 버퍼
                     output = BytesIO()
                     with pd.ExcelWriter(output, engine='openpyxl') as writer:
                         for d in dates:
@@ -156,31 +138,37 @@ else:
                             vios = vios[~vios['차량번호'].isin(ex_set)]
 
                             if not vios.empty:
-                                # 누적 기록 업데이트
                                 actions = []
                                 for idx, row in vios.iterrows():
-                                    c_no, d_str = row['차량번호'], str(d)
-                                    # 중복 로그 방지
+                                    c_no, d_str = str(row['차량번호']), str(d)
                                     if not ((df_log['날짜'] == d_str) & (df_log['차량번호'] == c_no)).any():
-                                        df_log = pd.concat([df_log, pd.DataFrame({'날짜':[d_str], '차량번호':[c_no]})], ignore_index=True)
+                                        new_log = pd.DataFrame({'날짜':[d_str], '차량번호':[c_no]})
+                                        df_log = pd.concat([df_log, new_log], ignore_index=True)
+                                        
                                         if c_no in df_h['차량번호'].astype(str).values:
                                             h_idx = df_h[df_h['차량번호'].astype(str) == c_no].index[0]
                                             df_h.at[h_idx, '누적횟수'] += 1
                                             df_h.at[h_idx, '최근위반일'] = d_str
                                         else:
-                                            nr = pd.DataFrame({'이름':[row.get('정기권성명','미확인')], '부서':[row.get('부서(동)','미확인')], 
-                                                              '차량번호':[c_no], '누적횟수':[1], '최근위반일':[d_str]})
+                                            nr = pd.DataFrame({
+                                                '이름':[row.get('정기권성명','미확인')], 
+                                                '부서':[row.get('부서(동)','미확인')], 
+                                                '차량번호':[c_no], 
+                                                '누적횟수':[1], 
+                                                '최근위반일':[d_str]
+                                            })
                                             df_h = pd.concat([df_h, nr], ignore_index=True)
                                     
-                                    cnt = df_h[df_h['차량번호'].astype(str) == c_no]['누적횟수'].values[0]
-                                    actions.append(f"{cnt}회 위반")
+                                    # 해당 차량의 현재 누적 횟수 가져오기
+                                    current_cnt = df_h[df_h['차량번호'].astype(str) == c_no]['누적횟수'].values[0]
+                                    actions.append(f"{current_cnt}회 위반")
                                 
                                 vios['조치사항'] = actions
                                 vios.to_excel(writer, sheet_name=str(d), index=False)
 
                         df_h.to_excel(writer, sheet_name='전체누적현황', index=False)
 
-                # 파일 저장 및 다운로드 버튼
+                # 파일 업데이트 저장
                 df_h.to_csv(history_file, index=False, encoding='utf-8-sig')
                 df_log.to_csv(detail_log_file, index=False, encoding='utf-8-sig')
                 
