@@ -25,7 +25,7 @@ if not st.session_state['authenticated']:
     check_password()
 else:
     # 3. 메인 프로그램 시작
-    st.title("🚗 차량 위반 통합 관리 시스템 v3.8")
+    st.title("🚗 차량 위반 통합 관리 시스템 v3.9")
     
     # 데이터 디렉토리 설정
     DATA_DIR = "Data"
@@ -43,56 +43,61 @@ else:
         
         st.divider()
         st.header("🔍 차량 통합 조회")
-        search_car = st.text_input("차량번호 뒷자리 검색")
         
-        if search_car:
-            is_registered = False
-            is_excluded = False
-            reg_info = None
-            ex_info = None
+        # [개선 2] 검색창 자동 초기화를 위해 st.form 사용
+        with st.form(key='search_form', clear_on_submit=True):
+            search_car = st.text_input("차량번호 뒷자리 검색")
+            submit_search = st.form_submit_button("검색")
+        
+        # 검색 버튼이 눌렸거나 검색어가 입력된 경우
+        if submit_search and search_car:
+            st.markdown(f"### '{search_car}' 검색 결과")
+            
+            # 데이터 로드 (매번 새로 로드하여 최신 상태 유지)
+            reg_df = pd.read_excel("전체차량리스트.xlsx") if os.path.exists("전체차량리스트.xlsx") else pd.DataFrame()
+            ex_df = pd.read_excel("제외리스트.xlsx") if os.path.exists("제외리스트.xlsx") else pd.DataFrame()
+            df_h = pd.read_csv(history_file) if os.path.exists(history_file) else pd.DataFrame()
 
-            # 1. 등록 여부 확인 (전체차량리스트.xlsx)
-            if os.path.exists("전체차량리스트.xlsx"):
-                reg_df = pd.read_excel("전체차량리스트.xlsx")
+            # 전체 리스트에서 검색
+            if not reg_df.empty:
                 reg_res = reg_df[reg_df['차량번호'].astype(str).str.contains(search_car)]
+                
                 if not reg_res.empty:
-                    is_registered = True
-                    reg_info = reg_res.iloc[0]
+                    # [개선 1] 중복된 차량이 있을 경우 모두 출력
+                    for i, row in reg_res.iterrows():
+                        full_car_no = str(row['차량번호'])
+                        
+                        # 제외 여부 확인
+                        is_excluded = False
+                        ex_info = None
+                        if not ex_df.empty:
+                            ex_res = ex_df[ex_df['차량번호'].astype(str) == full_car_no]
+                            if not ex_res.empty:
+                                is_excluded = True
+                                ex_info = ex_res.iloc[0]
 
-            # 2. 제외 여부 확인 (제외리스트.xlsx)
-            if os.path.exists("제외리스트.xlsx"):
-                ex_df = pd.read_excel("제외리스트.xlsx")
-                ex_res = ex_df[ex_df['차량번호'].astype(str).str.contains(search_car)]
-                if not ex_res.empty:
-                    is_excluded = True
-                    ex_info = ex_res.iloc[0]
-
-            # 3. 결과 출력 (요청하신 3가지 형식)
-            st.markdown("---")
-            if is_registered:
-                if is_excluded:
-                    # [결과 2] 등록된 차량(제외대상)
-                    main_reason = ex_info.get('제외사유', '사유 미기재')
-                    sub_reason = ex_info.get('상세사유', '-')
-                    st.info(f"✅ **등록된 차량입니다.**\n\n"
-                            f"💡 **제외차량 안내**\n"
-                            f"- 사유: {main_reason}\n"
-                            f"- 상세: {sub_reason}")
+                        # 결과 출력 (에어리어 구분)
+                        with st.expander(f"🚗 {full_car_no} ({row.get('성명', '이름없음')})", expanded=True):
+                            if is_excluded:
+                                main_reason = ex_info.get('제외사유', '사유 미기재')
+                                sub_reason = ex_info.get('상세사유', '-')
+                                st.info(f"✅ **등록 차량 (제외대상)**\n\n"
+                                        f"💡 사유: {main_reason}\n"
+                                        f"💡 상세: {sub_reason}")
+                            else:
+                                st.success(f"✅ **등록 차량 (일반)**")
+                            
+                            # 누적 위반 이력 표시
+                            if not df_h.empty:
+                                h_res = df_h[df_h['차량번호'].astype(str) == full_car_no]
+                                if not h_res.empty:
+                                    h_info = h_res.iloc[0]
+                                    st.write(f"🚩 **위반:** {h_info['누적횟수']}회 (최근: {h_info['최근위반일']})")
+                    st.divider()
                 else:
-                    # [결과 1] 등록된 차량(일반)
-                    st.success(f"✅ **등록된 차량입니다.**\n\n(제외차량 아님)")
+                    st.error(f"❌ '{search_car}' 미등록 차량")
             else:
-                # [결과 3] 미등록 차량
-                st.error("❌ **미등록 차량**")
-                st.warning("등록 리스트에 존재하지 않는 차량입니다.")
-
-            # 4. 누적 위반 기록 추가 표시
-            if os.path.exists(history_file):
-                df_h = pd.read_csv(history_file)
-                h_res = df_h[df_h['차량번호'].astype(str).str.contains(search_car)]
-                if not h_res.empty:
-                    h_info = h_res.iloc[0]
-                    st.write(f"🚩 **위반 이력:** {h_info['누적횟수']}회 (최근: {h_info['최근위반일']})")
+                st.warning("전체차량리스트.xlsx 파일이 없습니다.")
 
     # --- 메인 영역 ---
     st.subheader("1. 분석용 파일 업로드")
