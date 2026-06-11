@@ -85,7 +85,7 @@ else:
                                 st.write(f"**🏢 소속 정보:** {c_dept}")
                 else:
                     # [경우 3] 전체리스트에도 없는 경우
-                    st.error(f"❌ '{search_car}' 미등록 차량입니다. (사내 명단에 없음)")
+                    st.error(f"❌ '{search_car}' 미등록 차량입니다. (전체리스트에 없음)")
                     
             except Exception as e:
                 st.error(f"조회 중 오류 발생: {e}")
